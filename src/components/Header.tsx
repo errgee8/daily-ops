@@ -312,10 +312,6 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
               <button
                 onClick={() => onSelectTab('notes')}
                 className="hidden"
-                  currentTab === 'notes'
-                    ? 'bg-orange-600 text-white shadow-md font-extrabold'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
                 id="nav-tab-notes"
               >
                 <StickyNote className="w-4 h-4" />
