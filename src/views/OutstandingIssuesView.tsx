@@ -99,11 +99,11 @@ export const OutstandingIssuesView: React.FC<OutstandingIssuesViewProps> = ({
       // Search
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase();
-        const matchesName = iss.itemName.toLowerCase().includes(q);
-        const matchesArea = iss.areaName.toLowerCase().includes(q);
-        const matchesCrit = iss.criterionName.toLowerCase().includes(q);
-        const matchesProb = iss.specificProblems.some(p => p.toLowerCase().includes(q));
-        const matchesDept = iss.departmentName.toLowerCase().includes(q);
+        const matchesName = String(iss.itemName || '').toLowerCase().includes(q);
+        const matchesArea = String(iss.areaName || '').toLowerCase().includes(q);
+        const matchesCrit = String(iss.criterionName || '').toLowerCase().includes(q);
+        const matchesProb = (iss.specificProblems || []).some(p => String(p || '').toLowerCase().includes(q));
+        const matchesDept = String(iss.departmentName || '').toLowerCase().includes(q);
         if (!matchesName && !matchesArea && !matchesCrit && !matchesProb && !matchesDept) {
           return false;
         }

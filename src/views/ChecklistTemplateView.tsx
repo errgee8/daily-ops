@@ -110,7 +110,11 @@ export const ChecklistTemplateView: React.FC = () => {
     );
   }
 
-  const activeArea = template.areas.find(a => a.id === selectedAreaId) || template.areas[0];
+  // A fresh/older cloud database may legitimately have no template areas yet.
+  // Keep the manager screen usable so the first area can be created.
+  const activeArea = template.areas.find(a => a.id === selectedAreaId) || template.areas[0] || {
+    id: 'empty-area', name: 'No area created yet', order: 0, items: []
+  };
 
   // AREA HANDLERS
   const handleAddArea = async () => {
