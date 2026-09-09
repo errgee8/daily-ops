@@ -739,8 +739,19 @@ app.get('/api/supabase/daily-tasks', authenticateUser, async (req: Request, res:
     if (error) return res.status(500).json({ error: error.message });
     // Staff receive only tasks explicitly assigned to their account or role;
     // managers retain the complete operational view.
+    const normalizedCompany = String(user.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const companyVisible = (task: any) => {
+      if (!normalizedCompany || user.role !== 'STAFF') return true;
+      const taskCompany = String(task.company || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const venueName = String(task.venue_name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!taskCompany && !venueName) return true;
+      if (taskCompany) return taskCompany === normalizedCompany || (normalizedCompany.includes('luckycat') && taskCompany.includes('lucky')) || (normalizedCompany.includes('jpe') && taskCompany.includes('jpe'));
+      if (normalizedCompany.includes('luckycat')) return venueName.includes('lucky');
+      if (normalizedCompany.includes('jpe')) return !venueName.includes('lucky');
+      return true;
+    };
     const visible = user.role === 'STAFF'
-      ? (data || []).filter((task: any) => task.assigned_to_user_id === user.userId || task.assigned_to_role === user.role)
+      ? (data || []).filter((task: any) => (task.assigned_to_user_id === user.userId || task.assigned_to_role === user.role) && companyVisible(task))
       : (data || []);
     res.json(visible);
   } catch (err: any) {
@@ -799,6 +810,7 @@ app.post('/api/supabase/daily-tasks', authenticateUser, async (req: Request, res
       area_id: task.areaId || null,
       area_name: task.areaName || null,
       venue_name: task.venueName || null,
+      company: task.company || null,
       assigned_to_name: task.assignedUserName || task.assignedToName || null,
       assigned_to_user_id: task.assignedUserId || task.assignedToUserId || null,
       assigned_to_role: task.assignedRole || null,

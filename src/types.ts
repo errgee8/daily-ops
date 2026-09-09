@@ -63,6 +63,7 @@ export interface ItemTemplate {
   areaId: string;
   venueId?: string;
   venueName?: string;
+  company?: string;
   order: number;
   criteria: CriterionTemplate[];
 }

@@ -180,12 +180,14 @@ interface DataContextType {
     date?: string; 
     venueId?: string; 
     venueName?: string; 
+    company?: string;
     areaId?: string; 
     areaName?: string;
     dueTime?: string;
     instructions?: string;
     assignedToUserId?: string;
     assignedToName?: string;
+    company?: string;
   }, user: UserProfile) => Promise<DailyTask>;
   updateDailyTask: (taskId: string, taskData: { title?: string; notes?: string; priority?: TaskPriority; venueId?: string; venueName?: string; assignedToUserId?: string; assignedToName?: string }, user: UserProfile) => Promise<boolean>;
   deleteDailyTaskById: (taskId: string, user: UserProfile) => Promise<boolean>;
@@ -1868,6 +1870,7 @@ export const DataProvider: React.FC<{
       date: taskData.date || todayDate,
       venueId: taskData.venueId,
       venueName: taskData.venueName,
+      company: taskData.company,
       areaId: taskData.areaId,
       areaName: taskData.areaName,
       title: taskData.title.trim(),

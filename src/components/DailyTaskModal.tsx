@@ -78,6 +78,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
             venueId: selectedVenueId !== 'ALL' ? selectedVenueId : undefined,
             venueName: matchedVenue ? matchedVenue.name : undefined
             ,assignedToUserId: assignee?.id, assignedToName: assignee?.name
+            ,company: assignee?.company
           },
           currentUser
         );
@@ -91,6 +92,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
             venueId: selectedVenueId !== 'ALL' ? selectedVenueId : undefined,
             venueName: matchedVenue ? matchedVenue.name : undefined
             ,assignedToUserId: assignee?.id, assignedToName: assignee?.name
+            ,company: assignee?.company
           },
           currentUser
         );

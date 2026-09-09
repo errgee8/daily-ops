@@ -343,6 +343,7 @@ export async function fetchDailyTasksFromCloud(): Promise<DailyTask[]> {
         status: row.status || (row.is_done ? 'DONE' : 'PENDING'),
         venueId: row.venue_id,
         venueName: row.venue_name || undefined,
+        company: row.company || undefined,
         areaId: row.area_id || undefined,
         areaName: row.area_name || undefined,
         departmentId: row.department_id || 'dept-server',
