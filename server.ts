@@ -1793,4 +1793,4 @@ async function startServer() {
 // Netlify loads the Express app through a serverless adapter.  Local/VM
 // deployments retain the normal long-running listener.
 export { app };
-if (!process.env.NETLIFY) startServer();
+if (!process.env.NETLIFY && !process.env.VERCEL) startServer();
