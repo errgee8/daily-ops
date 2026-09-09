@@ -1,5 +1,6 @@
 // Vercel serverless entrypoint for the existing Express API.
-const serverless = require('serverless-http');
-const { app } = require('../dist/server.cjs');
+import serverless from 'serverless-http';
+import serverModule from '../dist/server.cjs';
 
-module.exports = serverless(app);
+const app = serverModule.app || serverModule.default?.app || serverModule;
+export default serverless(app);
