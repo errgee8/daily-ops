@@ -1,0 +1,689 @@
+import express from 'express';
+import type { Request, Response } from 'express';
+import path from 'path';
+import { createServer as createViteServer } from 'vite';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
+
+const app = express();
+const PORT = 3000;
+
+// Allow large payloads for base64 photo syncs
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// CORS configuration for remote Android APK and cross-origin clients
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, x-user-id, x-user-role, x-venue-id');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
+
+// Supabase server-side client initialization
+const rawUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || '';
+const supabaseUrl = rawUrl.replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+  if (!supabaseClient && supabaseUrl && supabaseKey) {
+    supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      }
+    });
+  }
+  return supabaseClient;
+}
+
+const DEFAULT_VENUE_ID = 'venue-default';
+
+// Set of connected SSE response streams for realtime multi-device sync
+const sseClients = new Set<Response>();
+
+function broadcastSse(event: string, data: any) {
+  const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(message);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+// Subscribe to Supabase Realtime on server side
+let realtimeChannel: any = null;
+
+function initServerRealtime() {
+  const sb = getSupabase();
+  if (!sb || realtimeChannel) return;
+
+  try {
+    realtimeChannel = sb.channel(`hndvr-sync-${DEFAULT_VENUE_ID}`)
+      .on('broadcast', { event: 'hndvr_event' }, (payload: any) => {
+        const evt = payload.payload?.eventType || 'SYNC_NEEDED';
+        broadcastSse(evt, payload.payload?.data || {});
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hndvr_templates' }, () => {
+        broadcastSse('TEMPLATE_UPDATED', { timestamp: new Date().toISOString() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_tasks' }, () => {
+        broadcastSse('TASKS_UPDATED', { timestamp: new Date().toISOString() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inspections' }, () => {
+        broadcastSse('INSPECTIONS_UPDATED', { timestamp: new Date().toISOString() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'issues' }, () => {
+        broadcastSse('ISSUES_UPDATED', { timestamp: new Date().toISOString() });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_notes' }, () => {
+        broadcastSse('SHIFT_NOTES_UPDATED', { timestamp: new Date().toISOString() });
+      })
+      .subscribe((status: string) => {
+        console.log(`[Server Realtime] Channel status: ${status}`);
+      });
+  } catch (err) {
+    console.error('[Server Realtime] Error initializing subscription:', err);
+  }
+}
+
+// ----------------------------------------------------
+// API ROUTES
+// ----------------------------------------------------
+
+app.get('/api/health', (req: Request, res: Response) => {
+  res.json({ 
+    status: 'ok', 
+    hasSupabase: Boolean(supabaseUrl && supabaseKey),
+    supabaseHost: supabaseUrl ? new URL(supabaseUrl).host : null
+  });
+});
+
+app.get('/api/supabase/status', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) {
+    return res.json({ configured: false, connected: false, error: 'Supabase credentials missing' });
+  }
+  try {
+    const { error } = await sb.from('hndvr_templates').select('id').limit(1);
+    res.json({ configured: true, connected: !error, error: error?.message || null });
+  } catch (err: any) {
+    res.json({ configured: true, connected: false, error: err.message });
+  }
+});
+
+// Realtime SSE stream for connected browsers
+app.get('/api/supabase/events', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+
+  sseClients.add(res);
+  res.write(`data: ${JSON.stringify({ type: 'CONNECTED', clients: sseClients.size })}\n\n`);
+
+  // Heartbeat every 20s
+  const intervalId = setInterval(() => {
+    try {
+      res.write(': ping\n\n');
+    } catch {
+      clearInterval(intervalId);
+      sseClients.delete(res);
+    }
+  }, 20000);
+
+  req.on('close', () => {
+    clearInterval(intervalId);
+    sseClients.delete(res);
+  });
+});
+
+// Broadcast event endpoint
+app.post('/api/supabase/broadcast', async (req: Request, res: Response) => {
+  const { event, data } = req.body;
+  broadcastSse(event || 'SYNC_NEEDED', data || {});
+
+  const sb = getSupabase();
+  if (sb && realtimeChannel) {
+    try {
+      await realtimeChannel.send({
+        type: 'broadcast',
+        event: 'hndvr_event',
+        payload: { eventType: event, data, timestamp: new Date().toISOString() }
+      });
+    } catch (e) {
+      // Ignored broadcast failure
+    }
+  }
+
+  res.json({ ok: true });
+});
+
+// 1. Template
+app.get('/api/supabase/template', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('hndvr_templates')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      // Try fallback to templates
+      const { data: fallback, error: fbError } = await sb
+        .from('templates')
+        .select('*')
+        .eq('venue_id', venueId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (fbError || !fallback || fallback.length === 0) {
+        return res.status(404).json({ error: 'Template not found' });
+      }
+      return res.json(fallback[0]);
+    }
+
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
+
+    res.json(data[0]);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/template', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const userRole = (req.headers['x-user-role'] as string) || '';
+  if (userRole && userRole !== 'MANAGER') {
+    return res.status(403).json({ error: 'Only Managers can modify the checklist master template' });
+  }
+
+  const { template } = req.body;
+  if (!template) return res.status(400).json({ error: 'Template payload required' });
+
+  try {
+    const now = new Date().toISOString();
+    const version = (template.version || 1) + 1;
+    const updatedTemplate = { ...template, version, lastModified: now };
+
+    const { error: hndvrError } = await sb
+      .from('hndvr_templates')
+      .upsert({
+        id: 'hndvr-template-default',
+        venue_id: DEFAULT_VENUE_ID,
+        template: updatedTemplate,
+        version,
+        updated_at: now
+      });
+
+    if (hndvrError) {
+      return res.status(500).json({ error: hndvrError.message });
+    }
+
+    // Keep legacy templates in sync
+    await sb
+      .from('templates')
+      .upsert({
+        id: 'template-default',
+        venue_id: DEFAULT_VENUE_ID,
+        name: 'Checklist Master Template',
+        version,
+        is_active: true,
+        areas: updatedTemplate.areas,
+        updated_at: now
+      });
+
+    broadcastSse('TEMPLATE_UPDATED', { version, lastModified: now });
+
+    res.json({ ok: true, version, lastModified: now });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 2. Daily Tasks
+app.get('/api/supabase/daily-tasks', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('daily_tasks')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/daily-tasks', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const task = req.body;
+  if (!task || !task.id) return res.status(400).json({ error: 'Task object with id required' });
+
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      id: task.id,
+      venue_id: task.venueId || DEFAULT_VENUE_ID,
+      date: task.date || now.split('T')[0],
+      title: task.title,
+      notes: task.notes || task.description || null,
+      priority: task.priority || 'NORMAL',
+      status: task.status || (task.status === 'DONE' ? 'DONE' : 'PENDING'),
+      is_done: task.status === 'DONE' || Boolean(task.isDone),
+      department_id: task.departmentId || 'dept-server',
+      area_id: task.areaId || null,
+      area_name: task.areaName || null,
+      venue_name: task.venueName || null,
+      assigned_to_name: task.assignedUserName || task.assignedToName || null,
+      created_by_user_id: task.createdByUserId || 'user-manager',
+      created_by_name: task.createdByName || 'General Manager',
+      started_at: task.startedAt || null,
+      started_by_user_id: task.startedByUserId || null,
+      started_by_name: task.startedByName || null,
+      completed_at: task.completedAt || null,
+      completed_by_id: task.completedByUserId || null,
+      completed_by_name: task.completedByName || null,
+      completion_reason: task.notDoneReason || task.completionReason || null,
+      completion_note: task.completionNote || task.completionNotes || null,
+      history: Array.isArray(task.history) ? task.history : [],
+      created_at: task.createdAt || now,
+      updated_at: now
+    };
+
+    const { error } = await sb.from('daily_tasks').upsert(payload);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('TASKS_UPDATED', { taskId: task.id });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/supabase/daily-tasks/:id', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const { id } = req.params;
+  const venueId = (req.query.venueId as string) || (req.headers['x-venue-id'] as string) || DEFAULT_VENUE_ID;
+  const userRole = (req.headers['x-user-role'] as string) || '';
+
+  if (userRole && userRole === 'STAFF') {
+    return res.status(403).json({ error: 'Staff cannot delete daily tasks' });
+  }
+
+  try {
+    const { error } = await sb.from('daily_tasks').delete().eq('id', id).eq('venue_id', venueId);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('TASKS_UPDATED', { taskId: id, deleted: true });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 3. Inspections
+app.get('/api/supabase/inspections', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('inspections')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('date', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/inspections', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const inspection = req.body;
+  if (!inspection || !inspection.id) return res.status(400).json({ error: 'Inspection object with id required' });
+
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      id: inspection.id,
+      venue_id: inspection.venueId || DEFAULT_VENUE_ID,
+      template_id: inspection.templateId || 'hndvr-template-default',
+      date: inspection.date || now.split('T')[0],
+      is_completed: Boolean(inspection.isCompleted || inspection.isHandedOver || inspection.status === 'COMPLETED'),
+      item_results: inspection.itemResults || {},
+      started_at: inspection.startedAt || now,
+      started_by_name: inspection.startedByName || 'General Manager',
+      started_by_role: inspection.startedByRole || 'MANAGER',
+      completed_at: inspection.completedAt || null,
+      completed_by_id: inspection.completedByUserId || null,
+      completed_by_name: inspection.completedByName || null,
+      handed_over_at: inspection.handedOverAt || null,
+      handed_over_by_name: inspection.handedOverByName || null,
+      is_handed_over: Boolean(inspection.isHandedOver),
+      total_items: inspection.totalItems || 0,
+      ready_items: inspection.readyItems || 0,
+      not_ready_items: inspection.notReadyItems || 0,
+      na_items: inspection.naItems || 0,
+      total_issues_count: inspection.totalIssuesCount || 0,
+      notes: inspection.notes || null,
+      created_at: inspection.startedAt || now,
+      updated_at: now
+    };
+
+    const { error } = await sb.from('inspections').upsert(payload);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('INSPECTIONS_UPDATED', { inspectionId: inspection.id });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 4. Issues
+app.get('/api/supabase/issues', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('issues')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('discovered_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/issues', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const issue = req.body;
+  if (!issue || !issue.id) return res.status(400).json({ error: 'Issue object with id required' });
+
+  try {
+    const now = new Date().toISOString();
+    let dbStatus = 'NOT_READY';
+    if (issue.currentStatus === 'VERIFIED') {
+      dbStatus = 'VERIFIED';
+    } else if (issue.currentStatus === 'WAITING_VERIFICATION' || issue.currentStatus === 'RESOLVED_PENDING_VERIFICATION') {
+      dbStatus = 'WAITING_VERIFICATION';
+    }
+
+    const payload = {
+      id: issue.id,
+      venue_id: issue.venueId || DEFAULT_VENUE_ID,
+      inspection_date: issue.inspectionDate || now.split('T')[0],
+      area_id: issue.areaId,
+      area_name: issue.areaName,
+      item_id: issue.itemId,
+      item_name: issue.itemName,
+      criterion_id: issue.criterionId,
+      criterion_name: issue.criterionName,
+      department_id: issue.departmentId || 'dept-server',
+      department_name: issue.departmentName || null,
+      original_inspection_status: issue.originalInspectionStatus || 'NOT_OK',
+      current_status: dbStatus,
+      specific_problems: issue.specificProblems || [],
+      custom_note: issue.customNote || null,
+      photos: issue.photos || [],
+      photo_url: (issue.photos && issue.photos[0]) || issue.photoUrl || null,
+      resolution_photo_url: (issue.resolutionPhotos && issue.resolutionPhotos[0]) || issue.resolutionPhotoUrl || null,
+      resolution_photos: issue.resolutionPhotos || [],
+      discovered_at: issue.discoveredAt || now,
+      discovered_by_name: issue.discoveredByName || 'General Manager',
+      discovered_by_role: issue.discoveredByRole || 'MANAGER',
+      resolved_at: issue.resolutionInfo?.resolvedAt || null,
+      resolved_by_name: issue.resolutionInfo?.resolvedByName || null,
+      resolution_notes: issue.resolutionInfo?.notes || null,
+      verified_at: issue.verificationInfo?.verifiedAt || null,
+      verified_by_name: issue.verificationInfo?.verifiedByName || null,
+      verified_by_role: issue.verificationInfo?.verifiedByRole || null,
+      verification_notes: issue.verificationInfo?.notes || null,
+      reopen_count: issue.reopenCount || 0,
+      created_at: issue.discoveredAt || now,
+      updated_at: now
+    };
+
+    const { error } = await sb.from('issues').upsert(payload);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('ISSUES_UPDATED', { issueId: issue.id });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 5. Shift Notes
+app.get('/api/supabase/shift-notes', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('shift_notes')
+      .select('*')
+      .eq('venue_id', venueId)
+      .order('date', { ascending: false });
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/shift-notes', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const note = req.body;
+  if (!note || !note.id) return res.status(400).json({ error: 'Shift note object with id required' });
+
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      id: note.id,
+      venue_id: note.venueId || DEFAULT_VENUE_ID,
+      date: note.date || now.split('T')[0],
+      title: note.title,
+      content: note.content || '',
+      author_name: note.authorName || 'General Manager',
+      author_role: note.authorRole || 'MANAGER',
+      priority: note.priority || 'NORMAL',
+      status: note.status || 'ACTIVE',
+      tags: note.tags || [],
+      completed_at: note.completedAt || null,
+      completed_by_name: note.completedByName || null,
+      created_at: note.createdAt || now,
+      updated_at: now
+    };
+
+    const { error } = await sb.from('shift_notes').upsert(payload);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('SHIFT_NOTES_UPDATED', { noteId: note.id });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/supabase/shift-notes/:id', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const { id } = req.params;
+  try {
+    const { error } = await sb.from('shift_notes').delete().eq('id', id);
+    if (error) return res.status(500).json({ error: error.message });
+
+    broadcastSse('SHIFT_NOTES_UPDATED', { noteId: id, deleted: true });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 6. Users
+app.get('/api/supabase/users', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const venueId = (req.query.venueId as string) || DEFAULT_VENUE_ID;
+  try {
+    const { data, error } = await sb
+      .from('users')
+      .select('*')
+      .eq('venue_id', venueId);
+
+    if (error) return res.status(500).json({ error: error.message });
+    res.json(data || []);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/supabase/users', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const user = req.body;
+  if (!user || !user.id) return res.status(400).json({ error: 'User object with id required' });
+
+  try {
+    const now = new Date().toISOString();
+    const payload = {
+      id: user.id,
+      venue_id: user.venueId || DEFAULT_VENUE_ID,
+      name: user.name,
+      role: user.role,
+      pin_hash: user.pinHash,
+      status: user.status || 'ACTIVE',
+      created_at: user.createdAt || now,
+      updated_at: now
+    };
+
+    const { error } = await sb.from('users').upsert(payload);
+    if (error) return res.status(500).json({ error: error.message });
+    res.json({ ok: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 7. Storage Upload
+app.post('/api/supabase/storage/upload', async (req: Request, res: Response) => {
+  const sb = getSupabase();
+  if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
+
+  const { dataUrl, storagePath } = req.body;
+  if (!dataUrl || !storagePath) {
+    return res.status(400).json({ error: 'dataUrl and storagePath are required' });
+  }
+
+  try {
+    const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+_-]+);base64,(.+)$/);
+    if (!match) {
+      return res.status(400).json({ error: 'Invalid data URL format. Must be image base64.' });
+    }
+
+    let contentType = match[1];
+    if (contentType === 'image/jpg') contentType = 'image/jpeg';
+    
+    // Validate supported image types for hndvr-photos bucket
+    if (!['image/jpeg', 'image/png', 'image/webp'].includes(contentType)) {
+      contentType = 'image/jpeg';
+    }
+
+    const base64Data = match[2];
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    const { error } = await sb.storage
+      .from('hndvr-photos')
+      .upload(storagePath, buffer, {
+        contentType,
+        upsert: true
+      });
+
+    if (error) {
+      console.error('[Storage Upload Error]', error);
+      return res.status(500).json({ error: error.message });
+    }
+
+    const { data: pubData } = sb.storage.from('hndvr-photos').getPublicUrl(storagePath);
+    res.json({ ok: true, url: pubData.publicUrl, path: storagePath });
+  } catch (err: any) {
+    console.error('[Storage Upload Exception]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ----------------------------------------------------
+// VITE MIDDLEWARE (DEV) & STATIC (PROD)
+// ----------------------------------------------------
+
+async function startServer() {
+  // Initialize server-side Realtime connection
+  initServerRealtime();
+
+  if (process.env.NODE_ENV !== 'production') {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req: Request, res: Response) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[HNDVR Server] Running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer();

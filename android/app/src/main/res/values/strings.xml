@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OVERHANDLE.</string>
+    <string name="title_activity_main">OVERHANDLE.</string>
+    <string name="package_name">com.ovhndl.app</string>
+    <string name="custom_url_scheme">com.ovhndl.app</string>
+</resources>
