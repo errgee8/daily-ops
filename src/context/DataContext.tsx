@@ -290,7 +290,14 @@ export const DataProvider: React.FC<{
   const { currentUser } = useAuth();
   const [isLoading, setIsLoading] = useState(!initialData);
   const [settings, setSettings] = useState<AppSettings>(initialData?.settings || ({} as AppSettings));
-  const [template, setTemplate] = useState<VenueTemplate>(initialData?.template || ({ areas: [], departments: [], lastModified: '', version: 1 }));
+  const normalizeTemplate = useCallback((value: any): VenueTemplate => ({
+    ...(value || {}),
+    areas: Array.isArray(value?.areas) ? value.areas : [],
+    departments: Array.isArray(value?.departments) ? value.departments : [],
+    version: value?.version || 1,
+    lastModified: value?.lastModified || new Date().toISOString()
+  }), []);
+  const [template, setTemplate] = useState<VenueTemplate>(normalizeTemplate(initialData?.template));
   const [inspections, setInspections] = useState<DailyInspection[]>(initialData?.inspections || []);
   const [issues, setIssues] = useState<OperationalIssue[]>(initialData?.issues || []);
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>(initialData?.tasks || []);
@@ -385,7 +392,7 @@ export const DataProvider: React.FC<{
       // 1. Authoritative Template
       const cloudTemplate = await fetchTemplateFromCloud();
       if (cloudTemplate && Array.isArray(cloudTemplate.areas) && cloudTemplate.areas.length > 0) {
-        setTemplate(cloudTemplate);
+        setTemplate(normalizeTemplate(cloudTemplate));
         await saveVenueTemplate(cloudTemplate);
       } else if (template?.areas?.length > 0) {
         await saveTemplateToCloud(template);
@@ -465,7 +472,7 @@ export const DataProvider: React.FC<{
         if (event === 'TEMPLATE_UPDATED') {
           const fresh = await fetchTemplateFromCloud();
           if (fresh) {
-            setTemplate(fresh);
+            setTemplate(normalizeTemplate(fresh));
             await saveVenueTemplate(fresh);
           }
         } else if (event === 'TASKS_UPDATED') {
