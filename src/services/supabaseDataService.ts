@@ -154,15 +154,13 @@ function ensureRealtimeSubscription() {
   }
 
   // Netlify/serverless deployments cannot hold a permanent SSE request. A
-  // bounded poll keeps every connected device synchronized without requiring
-  // another paid realtime service. SSE remains preferred when available.
+  // Netlify counts each serverless request against the team allowance. Keep a
+  // conservative fallback poll for task synchronization; SSE remains preferred
+  // when available and managers can still use the manual sync button.
   if (activePollingTimer === null) {
     activePollingTimer = window.setInterval(() => {
       notifyRealtimeListeners('TASKS_UPDATED');
-      notifyRealtimeListeners('INSPECTIONS_UPDATED');
-      notifyRealtimeListeners('ISSUES_UPDATED');
-      notifyRealtimeListeners('SHIFT_NOTES_UPDATED');
-    }, 15000);
+    }, 60000);
   }
 
   // Direct database subscriptions deliberately are not used for business data.
