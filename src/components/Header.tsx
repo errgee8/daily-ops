@@ -73,7 +73,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
             <div className="flex items-center gap-2">
               <h1 className="text-xl md:text-2xl font-black tracking-tight text-white font-sans">HANDOVER.</h1>
               <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">by Ryan Gerrit</span>
-              <button 
+              {currentRole !== 'STAFF' && <button 
                 onClick={() => syncWithCloud()}
                 title={lastCloudSyncTime ? `Last synced: ${lastCloudSyncTime}. Click to sync.` : 'Click to sync with Supabase'}
                 className={`hidden sm:inline-flex items-center gap-1.5 text-[10px] font-mono px-2 py-0.5 rounded-md border ml-1 cursor-pointer transition-colors ${
@@ -88,7 +88,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
                   cloudSyncStatus === 'CONNECTED' ? 'bg-emerald-400' : cloudSyncStatus === 'SYNCING' ? 'bg-blue-400 animate-ping' : 'bg-amber-400'
                 }`} />
                 {cloudSyncStatus === 'CONNECTED' ? 'CLOUD LIVE' : cloudSyncStatus === 'SYNCING' ? 'SYNCING...' : 'CONNECTING'}
-              </button>
+              </button>}
             </div>
             <p className="text-xs text-slate-400 uppercase tracking-widest truncate max-w-xs md:max-w-md font-mono">
               {settings.venueName || 'Hospitality Venue Management'}
@@ -156,7 +156,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
             <>
               {isManager && <button
                 onClick={() => onSelectTab('inspection')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`${currentRole !== 'MANAGER' ? 'hidden ' : ''}px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'inspection'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -187,7 +187,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('daily-tasks')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`${currentRole !== 'MANAGER' ? 'hidden ' : ''}px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'daily-tasks'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -205,7 +205,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('notes')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`hidden px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'notes'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -223,7 +223,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('history')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`hidden px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'history'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -236,7 +236,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('checklist')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`${currentRole !== 'MANAGER' ? 'hidden ' : ''}px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'checklist'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -262,7 +262,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('settings')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className={`${currentRole !== 'MANAGER' ? 'hidden ' : ''}px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'settings'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -311,7 +311,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('notes')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
+                className="hidden"
                   currentTab === 'notes'
                     ? 'bg-orange-600 text-white shadow-md font-extrabold'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
@@ -329,11 +329,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
 
               <button
                 onClick={() => onSelectTab('history')}
-                className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
-                  currentTab === 'history'
-                    ? 'bg-orange-600 text-white shadow-md font-extrabold'
-                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                }`}
+                className="hidden"
                 id="nav-tab-history"
               >
                 <History className="w-4 h-4" />
