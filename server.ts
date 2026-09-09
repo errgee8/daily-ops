@@ -700,11 +700,10 @@ app.post('/api/supabase/template', authenticateUser, async (req: Request, res: R
         updated_at: now
       });
 
-    if (hndvrError) {
-      return res.status(500).json({ error: hndvrError.message });
-    }
+    // Older installations may only have `templates`; keep both stores in sync.
+    // A missing hndvr_templates table must not make the manager screen unusable.
 
-    await sb
+    const { error: templateError } = await sb
       .from('templates')
       .upsert({
         id: 'template-default',
@@ -715,6 +714,8 @@ app.post('/api/supabase/template', authenticateUser, async (req: Request, res: R
         areas: updatedTemplate.areas,
         updated_at: now
       });
+
+    if (hndvrError && templateError) return res.status(500).json({ error: templateError.message || hndvrError.message });
 
     broadcastSse('TEMPLATE_UPDATED', { version, lastModified: now });
     res.json({ ok: true, version, lastModified: now });
