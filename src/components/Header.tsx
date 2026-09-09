@@ -20,6 +20,7 @@ import {
   StickyNote,
   Users,
   Award
+  ,BarChart3
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -54,6 +55,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
   }, []);
 
   const isManager = currentRole === 'MANAGER';
+  const isLeadership = isManager || currentRole === 'ASSISTANT_MANAGER';
   const totalOutstanding = outstandingIssues.length;
   const waitingVerificationCount = allWaitingVerificationIssues.length;
   const openNotesCount = shiftNotes.filter(n => n.status === 'OPEN' || n.status === 'IN_PROGRESS').length;
@@ -115,6 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
             <Lock className="w-3.5 h-3.5" />
             <span>LOCK SYSTEM</span>
           </button>
+
         </div>
       </div>
 
@@ -135,6 +138,8 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
             <span>TODAY</span>
           </button>
 
+          {isLeadership && <button onClick={() => onSelectTab('report')} className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${currentTab === 'report' ? 'bg-orange-600 text-white shadow-md font-extrabold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`} id="nav-tab-report"><BarChart3 className="w-4 h-4" /><span>REPORT</span></button>}
+
           <button
             onClick={() => onSelectTab('attendance')}
             className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
@@ -147,9 +152,9 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
           </button>
 
           {/* MANAGER TABS */}
-          {isManager ? (
+          {isLeadership ? (
             <>
-              <button
+              {isManager && <button
                 onClick={() => onSelectTab('inspection')}
                 className={`px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all min-h-[40px] cursor-pointer whitespace-nowrap ${
                   currentTab === 'inspection'
@@ -160,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({ currentTab, onSelectTab }) => {
               >
                 <ClipboardCheck className="w-4 h-4" />
                 <span>INSPECTION</span>
-              </button>
+              </button>}
 
               <button
                 onClick={() => onSelectTab('outstanding')}

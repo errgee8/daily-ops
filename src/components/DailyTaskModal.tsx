@@ -17,7 +17,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
   taskToEdit,
   defaultDate
 }) => {
-  const { currentUser, isManager } = useAuth();
+  const { currentUser, users } = useAuth();
   const { todayDate, createDailyTask, updateDailyTask, venues } = useData();
 
   const [title, setTitle] = useState('');
@@ -25,6 +25,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
   const [priority, setPriority] = useState<TaskPriority>('NORMAL');
   const [date, setDate] = useState(todayDate);
   const [selectedVenueId, setSelectedVenueId] = useState<string>('ALL');
+  const [assignedToUserId, setAssignedToUserId] = useState<string>('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -36,12 +37,14 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
         setPriority(taskToEdit.priority);
         setDate(taskToEdit.date);
         setSelectedVenueId(taskToEdit.venueId || 'ALL');
+        setAssignedToUserId(taskToEdit.assignedToUserId || '');
       } else {
         setTitle('');
         setNotes('');
         setPriority('NORMAL');
         setDate(defaultDate || todayDate);
         setSelectedVenueId('ALL');
+        setAssignedToUserId('');
       }
       setError('');
       setIsSubmitting(false);
@@ -61,6 +64,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
     }
 
     const matchedVenue = venues.find(v => v.id === selectedVenueId);
+    const assignee = users.find(user => user.id === assignedToUserId);
 
     setIsSubmitting(true);
     try {
@@ -73,6 +77,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
             priority,
             venueId: selectedVenueId !== 'ALL' ? selectedVenueId : undefined,
             venueName: matchedVenue ? matchedVenue.name : undefined
+            ,assignedToUserId: assignee?.id, assignedToName: assignee?.name
           },
           currentUser
         );
@@ -85,6 +90,7 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
             date,
             venueId: selectedVenueId !== 'ALL' ? selectedVenueId : undefined,
             venueName: matchedVenue ? matchedVenue.name : undefined
+            ,assignedToUserId: assignee?.id, assignedToName: assignee?.name
           },
           currentUser
         );
@@ -180,6 +186,15 @@ export const DailyTaskModal: React.FC<DailyTaskModalProps> = ({
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Task Title */}
+          <div>
+            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">Assign to staff (optional)</label>
+            <select value={assignedToUserId} onChange={(e) => setAssignedToUserId(e.target.value)} className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-sm font-medium text-slate-900">
+              <option value="">Any staff / team</option>
+              {users.filter(user => user.status !== 'INACTIVE').map(user => <option key={user.id} value={user.id}>{user.name} · {user.role}</option>)}
+            </select>
           </div>
 
           {/* Task Title */}

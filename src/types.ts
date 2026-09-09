@@ -289,6 +289,7 @@ export interface DailyTask {
   completedByName?: string;
   completionReason?: string; // Quick reason for NOT_DONE or SKIPPED
   completionNote?: string;
+  completionPhotoUrl?: string;
   skipReason?: string;
   history?: TaskAuditLog[];
 }

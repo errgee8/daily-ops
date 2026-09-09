@@ -361,6 +361,7 @@ export async function fetchDailyTasksFromCloud(): Promise<DailyTask[]> {
         completedByUserId: row.completed_by_user_id || undefined,
         completedByName: row.completed_by_name || undefined,
         completionNote: row.completion_note || row.completion_notes || undefined,
+        completionPhotoUrl: row.completion_photo_url || undefined,
         history: Array.isArray(row.history) ? row.history : []
       }));
     }

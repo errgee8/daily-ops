@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Camera, CheckCircle2, Clock, LogIn, LogOut, ShieldAlert } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { AttendanceRecord, InspectionItemResult } from '../types';
+import { AttendanceRecord } from '../types';
 import { getAttendanceRecords, saveAttendanceRecord } from '../db/indexedDb';
 import { fetchAttendanceRecordsFromCloud, saveAttendanceRecordToCloud } from '../services/supabaseDataService';
 import { verifyVenueWifi } from '../services/venueWifi';
@@ -17,7 +17,7 @@ const deviceId = () => {
 };
 
 export const AttendanceView: React.FC = () => {
-  const { currentUser, isManager } = useAuth();
+  const { currentUser, isManager, isAssistantManager } = useAuth();
   const { todayInspection, todayTasks, venues, settings } = useData();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [type, setType] = useState<'CHECK_IN' | 'CHECK_OUT' | null>(null);
@@ -39,18 +39,8 @@ export const AttendanceView: React.FC = () => {
     return venues.find(item => item.id === assigned) || venues.find(item => item.id === todayInspection?.venueId) || venues[0];
   }, [currentUser, venues, todayInspection]);
 
-  const checklistError = () => {
-    if (!todayInspection) return 'Start and complete your assigned checklist before attendance.';
-    const criteria = (Object.values(todayInspection.itemResults) as InspectionItemResult[]).flatMap(item => item.criterionResults || []);
-    if (criteria.length === 0 || criteria.some(item => item.status === 'NA')) return 'Every checklist item must be completed before attendance.';
-    if (criteria.some(item => !(item.photos?.length || item.photoUrl))) return 'Every checklist item requires a proof photo before attendance.';
-    return null;
-  };
-
   const capture = async (selfieUrl: string) => {
     if (!currentUser || !venue || !type) return;
-    const incomplete = checklistError();
-    if (type === 'CHECK_IN' && incomplete) { setMessage(incomplete); return; }
     if (type === 'CHECK_OUT' && todayTasks.some(task => task.status === 'PENDING' || task.status === 'IN_PROGRESS')) {
       setMessage('Complete or formally close all of today’s tasks before checkout.'); return;
     }
@@ -82,7 +72,7 @@ export const AttendanceView: React.FC = () => {
 
   return <div className="max-w-4xl mx-auto p-6 space-y-5">
     <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
-      <div className="flex items-center gap-3"><Clock className="text-orange-600" /><div><h1 className="text-2xl font-black">Attendance verification</h1><p className="text-sm text-slate-500">Checklist, approved Wi-Fi, live selfie, and timestamp are required.</p></div></div>
+      <div className="flex items-center gap-3"><Clock className="text-orange-600" /><div><h1 className="text-2xl font-black">Attendance</h1><p className="text-sm text-slate-500">Live photo + approved company Wi‑Fi + server timestamp.</p></div></div>
     </div>
     {message && <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-900">{message}</div>}
     {!isManager && <div className="grid sm:grid-cols-2 gap-4">
@@ -90,8 +80,8 @@ export const AttendanceView: React.FC = () => {
       <button disabled={!checkedIn || checkedOut} onClick={() => setType('CHECK_OUT')} className="disabled:opacity-40 rounded-2xl bg-slate-800 text-white p-6 font-black flex items-center justify-center gap-2"><LogOut /> {checkedOut ? 'CHECKED OUT' : 'CHECK OUT'}</button>
     </div>}
     <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-      <div className="p-4 font-black">{isManager ? 'Today’s attendance' : 'My attendance today'}</div>
-      {(isManager ? records.filter(item => item.capturedAt.startsWith(today)) : own).map(item => <div key={item.id} className="border-t p-4 flex items-center justify-between text-sm"><span><b>{item.staffName}</b> · {item.venueName} · {item.type.replace('_', ' ')}</span><span className="text-slate-500">{new Date(item.capturedAt).toLocaleTimeString()} · {item.wifiVerified ? 'Wi‑Fi verified' : 'Wi‑Fi failed'}</span></div>)}
+      <div className="p-4 font-black">{isManager || isAssistantManager ? 'Today’s attendance' : 'My attendance today'}</div>
+      {(isManager || isAssistantManager ? records.filter(item => item.capturedAt.startsWith(today)) : own).map(item => <div key={item.id} className="border-t p-4 flex items-center justify-between gap-3 text-sm"><span><b>{item.staffName}</b> · {item.venueName} · {item.type.replace('_', ' ')}</span><span className="text-slate-500 text-right">{new Date(item.capturedAt).toLocaleTimeString()} · {item.wifiVerified ? 'Wi‑Fi verified' : 'Wi‑Fi failed'} {item.selfieUrl && <a className="text-orange-700 underline ml-2" href={item.selfieUrl} target="_blank" rel="noreferrer">Photo</a>}</span></div>)}
       {records.length === 0 && <div className="border-t p-4 text-sm text-slate-500">No attendance records yet.</div>}
     </div>
     <PhotoCaptureModal isOpen={type !== null} title={type === 'CHECK_IN' ? 'Live check-in selfie' : 'Live checkout selfie'} cameraFacing="user" requireLiveCapture onClose={() => setType(null)} onPhotoSaved={capture} />

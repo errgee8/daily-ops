@@ -187,10 +187,10 @@ interface DataContextType {
     assignedToUserId?: string;
     assignedToName?: string;
   }, user: UserProfile) => Promise<DailyTask>;
-  updateDailyTask: (taskId: string, taskData: { title?: string; notes?: string; priority?: TaskPriority; venueId?: string; venueName?: string }, user: UserProfile) => Promise<boolean>;
+  updateDailyTask: (taskId: string, taskData: { title?: string; notes?: string; priority?: TaskPriority; venueId?: string; venueName?: string; assignedToUserId?: string; assignedToName?: string }, user: UserProfile) => Promise<boolean>;
   deleteDailyTaskById: (taskId: string, user: UserProfile) => Promise<boolean>;
   startDailyTask: (taskId: string, user: UserProfile) => Promise<void>;
-  markDailyTaskDone: (taskId: string, user: UserProfile, note?: string) => Promise<void>;
+  markDailyTaskDone: (taskId: string, user: UserProfile, note?: string, proofPhoto?: string) => Promise<void>;
   markDailyTaskNotDone: (taskId: string, reason: string, note?: string, user?: UserProfile) => Promise<void>;
   markDailyTaskSkipped: (taskId: string, skipReason: string, user: UserProfile) => Promise<void>;
   
@@ -1886,7 +1886,7 @@ export const DataProvider: React.FC<{
 
   const updateDailyTask = useCallback(async (
     taskId: string,
-    taskData: { title?: string; notes?: string; priority?: TaskPriority; venueId?: string; venueName?: string },
+    taskData: { title?: string; notes?: string; priority?: TaskPriority; venueId?: string; venueName?: string; assignedToUserId?: string; assignedToName?: string },
     user: UserProfile
   ): Promise<boolean> => {
     const task = dailyTasks.find(t => t.id === taskId);
@@ -1918,6 +1918,8 @@ export const DataProvider: React.FC<{
       priority: taskData.priority || task.priority,
       venueId: taskData.venueId !== undefined ? taskData.venueId : task.venueId,
       venueName: taskData.venueName !== undefined ? taskData.venueName : task.venueName,
+      assignedToUserId: taskData.assignedToUserId !== undefined ? taskData.assignedToUserId || undefined : task.assignedToUserId,
+      assignedToName: taskData.assignedToName !== undefined ? taskData.assignedToName || undefined : task.assignedToName,
       updatedAt: now,
       history: [...(task.history || []), auditLog]
     };
@@ -1970,7 +1972,7 @@ export const DataProvider: React.FC<{
     await saveDailyTaskToCloud(updated);
   }, [dailyTasks]);
 
-  const markDailyTaskDone = useCallback(async (taskId: string, user: UserProfile, note?: string): Promise<void> => {
+  const markDailyTaskDone = useCallback(async (taskId: string, user: UserProfile, note?: string, proofPhoto?: string): Promise<void> => {
     const task = dailyTasks.find(t => t.id === taskId);
     if (!task) return;
 
@@ -1994,6 +1996,7 @@ export const DataProvider: React.FC<{
       completedByUserId: user.id,
       completedByName: user.name,
       completionNote: note?.trim() || undefined,
+      completionPhotoUrl: proofPhoto || undefined,
       completionReason: undefined, // Clear any previous not-done reason
       updatedAt: now,
       history: [...(task.history || []), auditLog]

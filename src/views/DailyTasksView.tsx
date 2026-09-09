@@ -60,6 +60,17 @@ export const DailyTasksView: React.FC = () => {
   // Filtered Tasks
   const filteredTasks = useMemo(() => {
     return dailyTasks.filter(task => {
+      // Managers and assistant managers see the operational board. Staff only see
+      // their own assignment and tasks in their company/venue scope.
+      if (!isManager && !isAssistantManager && currentUser) {
+        if (task.assignedToUserId && task.assignedToUserId !== currentUser.id) return false;
+        if (task.assignedToUserId === undefined && task.assignedRole && task.assignedRole !== currentUser.role) return false;
+        const company = String(currentUser.company || '').toLowerCase();
+        const venueName = String(task.venueName || '').toLowerCase();
+        if (company.includes('lucky') && venueName && !venueName.includes('lucky')) return false;
+        if ((company.includes('jpe') || company.includes('j.p.e')) && venueName && venueName.includes('lucky')) return false;
+        if (task.venueId && currentUser.assignedVenueIds?.length && !currentUser.assignedVenueIds.includes(task.venueId)) return false;
+      }
       // Venue filter
       if (selectedVenueFilter !== 'ALL' && task.venueId && task.venueId !== selectedVenueFilter) {
         return false;
@@ -257,7 +268,7 @@ export const DailyTasksView: React.FC = () => {
         </div>
 
         {/* Manager Create Task Button */}
-        {isManager && (
+        {(isManager || isAssistantManager) && (
           <button
             onClick={() => {
               setTaskToEdit(null);
@@ -479,7 +490,7 @@ export const DailyTasksView: React.FC = () => {
                 ? 'No tasks have been created in the system yet.'
                 : `No tasks assigned for ${selectedDate === todayDate ? 'today' : selectedDate}.`}
             </p>
-            {isManager && (
+            {(isManager || isAssistantManager) && (
               <button
                 onClick={() => {
                   setTaskToEdit(null);
@@ -528,7 +539,7 @@ export const DailyTasksView: React.FC = () => {
                     </div>
 
                     {/* Manager Actions: Edit & Delete */}
-                    {isManager && (
+                    {(isManager || isAssistantManager) && (
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => {
@@ -799,3 +810,4 @@ export const DailyTasksView: React.FC = () => {
     </div>
   );
 };
+

@@ -92,6 +92,7 @@ export interface AuthenticatedUser {
   venueIds?: string[];
   areaIds?: string[];
   hasAllVenueAccess?: boolean;
+  company?: string;
   tokenVersion?: number;
   iat: number;
   exp: number;
@@ -542,6 +543,7 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
       venueIds: Array.isArray(matchedUser.assigned_venue_ids) && matchedUser.assigned_venue_ids.length ? matchedUser.assigned_venue_ids : [matchedUser.venue_id],
       areaIds: Array.isArray(matchedUser.assigned_area_ids) ? matchedUser.assigned_area_ids : [],
       hasAllVenueAccess: matchedUser.role === 'MANAGER' || Boolean(matchedUser.has_all_venue_access),
+      company: prof?.company || (matchedUser.role === 'STAFF' ? 'luckycat' : 'JPE KTV'),
     });
 
     res.json({
@@ -777,8 +779,11 @@ app.post('/api/supabase/daily-tasks', authenticateUser, async (req: Request, res
     else if (rawPrio === 'LOW') dbPriority = 'LOW';
     else dbPriority = 'MEDIUM';
 
-    const isTaskCompleted = task.status === 'DONE' || task.status === 'COMPLETED' || Boolean(task.isDone);
-    const isTaskStarted = task.status === 'IN_PROGRESS' || Boolean(task.startedAt);
+  const isTaskCompleted = task.status === 'DONE' || task.status === 'COMPLETED' || Boolean(task.isDone);
+  const isTaskStarted = task.status === 'IN_PROGRESS' || Boolean(task.startedAt);
+    if (isTaskCompleted && user.role === 'STAFF' && !task.completionPhotoUrl) {
+      return res.status(400).json({ error: 'Staff task completion requires a proof photo.' });
+    }
 
     const payload = {
       id: task.id,
@@ -806,6 +811,7 @@ app.post('/api/supabase/daily-tasks', authenticateUser, async (req: Request, res
       completed_by_name: isTaskCompleted ? (task.completedByName || user.name) : null,
       completion_reason: task.skipReason || task.notDoneReason || task.completionReason || null,
       completion_note: task.completionNote || task.completionNotes || null,
+      completion_photo_url: task.completionPhotoUrl || null,
       history: Array.isArray(task.history) ? task.history : [],
       created_at: task.createdAt || now,
       updated_at: now
@@ -854,7 +860,7 @@ app.get('/api/supabase/attendance', authenticateUser, async (req: Request, res: 
   if (!sb) return res.status(503).json({ error: 'Supabase not configured' });
   const user = (req as any).user as AuthenticatedUser;
   let query: any = sb.from('attendance_records').select('*').order('captured_at', { ascending: false }).limit(500);
-  if (user.role !== 'MANAGER') query = query.eq('staff_user_id', user.userId);
+  if (user.role === 'STAFF') query = query.eq('staff_user_id', user.userId);
   const scope = permittedVenueIds(user);
   if (scope) query = query.in('venue_id', scope);
   const { data, error } = await query;
@@ -872,9 +878,6 @@ app.post('/api/supabase/attendance', authenticateUser, async (req: Request, res:
   if (scope && !scope.includes(venueId)) return res.status(403).json({ error: 'Forbidden: attendance venue is outside your assignment.' });
   if (!record.id || !record.type || !record.selfieUrl || !record.wifiVerified || !record.deviceId) {
     return res.status(400).json({ error: 'Live selfie, approved Wi-Fi, device identifier and attendance type are required.' });
-  }
-  if (record.type === 'CHECK_IN' && !record.checklistInspectionId) {
-    return res.status(400).json({ error: 'A completed checklist is required before check-in.' });
   }
   const now = new Date().toISOString();
   const { error } = await sb.from('attendance_records').upsert({

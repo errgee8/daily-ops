@@ -15,6 +15,7 @@ import { ChecklistTemplateView } from './views/ChecklistTemplateView';
 import { SettingsView } from './views/SettingsView';
 import { StaffManagementView } from './views/StaffManagementView';
 import { AttendanceView } from './views/AttendanceView';
+import { ReportsView } from './views/ReportsView';
 import { StaffCallAlertModal } from './components/StaffCallAlertModal';
 import { IssueStatus } from './types';
 import { ActionableReminder } from './utils/reminderEngine';
@@ -148,6 +149,10 @@ const AppContent: React.FC = () => {
 
         {currentTab === 'attendance' && (
           <AttendanceView />
+        )}
+
+        {currentTab === 'report' && (
+          <ReportsView />
         )}
 
         {currentTab === 'settings' && currentRole === 'MANAGER' && (

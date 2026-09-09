@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { DailyTask } from '../types';
 import { useAuth } from '../context/AuthContext';
 import { useData } from '../context/DataContext';
-import { X, CheckCircle2, MessageSquare } from 'lucide-react';
+import { X, CheckCircle2, MessageSquare, Camera } from 'lucide-react';
+import { PhotoCaptureModal } from './PhotoCaptureModal';
 
 interface TaskDoneModalProps {
   isOpen: boolean;
@@ -15,11 +16,13 @@ export const TaskDoneModal: React.FC<TaskDoneModalProps> = ({
   onClose,
   task
 }) => {
-  const { currentUser } = useAuth();
+  const { currentUser, isManager, isAssistantManager } = useAuth();
   const { markDailyTaskDone } = useData();
 
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [proofPhoto, setProofPhoto] = useState<string | null>(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   if (!isOpen || !task) return null;
 
@@ -27,9 +30,10 @@ export const TaskDoneModal: React.FC<TaskDoneModalProps> = ({
     e.preventDefault();
     if (!currentUser) return;
 
+    if (!isManager && !isAssistantManager && !proofPhoto) return;
     setIsSubmitting(true);
     try {
-      await markDailyTaskDone(task.id, currentUser, note.trim() || undefined);
+      await markDailyTaskDone(task.id, currentUser, note.trim() || undefined, proofPhoto || undefined);
       onClose();
     } catch (err) {
       console.error(err);
@@ -75,6 +79,14 @@ export const TaskDoneModal: React.FC<TaskDoneModalProps> = ({
             )}
           </div>
 
+          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div><p className="text-xs font-black uppercase text-emerald-800">Proof photo {!isManager && !isAssistantManager && '*'}</p><p className="text-xs text-emerald-700">Staff must attach a photo before marking done.</p></div>
+              <button type="button" onClick={() => setPhotoOpen(true)} className="rounded-lg bg-emerald-600 text-white px-3 py-2 text-xs font-bold flex items-center gap-1"><Camera className="w-4 h-4" /> {proofPhoto ? 'Retake' : 'Take photo'}</button>
+            </div>
+            {proofPhoto && <img src={proofPhoto} alt="Task proof" className="mt-3 h-24 w-24 rounded-lg object-cover border" />}
+          </div>
+
           {/* Completion Note */}
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
@@ -102,7 +114,7 @@ export const TaskDoneModal: React.FC<TaskDoneModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (!isManager && !isAssistantManager && !proofPhoto)}
               className="px-5 py-2.5 rounded-xl text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 shadow-md transition-all cursor-pointer flex items-center gap-2"
               id="btn-confirm-task-done"
             >
@@ -112,6 +124,7 @@ export const TaskDoneModal: React.FC<TaskDoneModalProps> = ({
           </div>
         </form>
       </div>
+      <PhotoCaptureModal isOpen={photoOpen} title="Task proof photo" onClose={() => setPhotoOpen(false)} onPhotoSaved={(photo) => { setProofPhoto(photo); setPhotoOpen(false); }} />
     </div>
   );
 };

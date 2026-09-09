@@ -220,7 +220,7 @@ export const LoginScreen: React.FC = () => {
                       MGR
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">PIN Secured (e.g. 8888)</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">PIN secured</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-orange-600 group-hover:translate-x-1 transition-all shrink-0" />
@@ -244,7 +244,7 @@ export const LoginScreen: React.FC = () => {
                       ASST
                     </span>
                   </div>
-                  <p className="text-[11px] text-slate-500 mt-0.5">PIN Secured (e.g. 1234)</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">PIN secured</p>
                 </div>
               </div>
               <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0" />
